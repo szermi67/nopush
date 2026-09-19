@@ -23,7 +23,7 @@ jobs:
           cat << 'EOF' > settings.gradle
           pluginManagement {
               repositories {
-                  maven { url = 'https://maven.fabricmc.net/' }
+                  maven { url = 'https://fabricmc.net' }
                   mavenCentral()
               }
           }
@@ -56,8 +56,8 @@ jobs:
             "schemaVersion": 1,
             "id": "nopush-doomsday",
             "version": "1.0.0",
-            "name": "No Push Doomsday",
-            "description": "Wyciety modul NoPush z cheata Doomsday.",
+            "name": "No Push + AntiBadEffect",
+            "description": "Wyciete moduly NoPush oraz AntiBlindness z cheata Doomsday.",
             "authors": ["Serwer"],
             "license": "MIT",
             "environment": "client",
@@ -72,12 +72,13 @@ jobs:
             "package": "pl.serwer.nopush.mixin",
             "compatibilityLevel": "JAVA_21",
             "client": [
-              "LocalPlayerMixin"
+              "LocalPlayerMixin",
+              "AntiBlindnessMixin"
             ]
           }
           EOF
 
-      - name: Generowanie kodu zrodlowego z Doomsdaya
+      - name: Generowanie kodu NoPush (LocalPlayer)
         run: |
           cat << 'EOF' > src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
           package pl.serwer.nopush.mixin;
@@ -96,6 +97,31 @@ jobs:
           }
           EOF
 
+      - name: Generowanie kodu AntiBadEffect (Lightmap/Effects)
+        run: |
+          cat << 'EOF' > src/main/java/pl/serwer/nopush/mixin/AntiBlindnessMixin.java
+          package pl.serwer.nopush.mixin;
+          
+          import net.minecraft.client.player.LocalPlayer;
+          import net.minecraft.entity.effect.StatusEffects;
+          import org.spongepowered.asm.mixin.Mixin;
+          import org.spongepowered.asm.mixin.injection.At;
+          import org.spongepowered.asm.mixin.injection.Inject;
+          import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+          
+          @Mixin(LocalPlayer.class)
+          public class AntiBlindnessMixin {
+              // Wstrzykujemy kod w sprawdzenie, czy gracz posiada dany efekt statusu
+              @Inject(method = "hasStatusEffect", at = @At("HEAD"), cancellable = true)
+              private void onHasStatusEffect(net.minecraft.registry.entry.RegistryEntry effect, CallbackInfoReturnable<Boolean> cir) {
+                  // Jesli gra pyta, czy masz Slepote (BLINDNESS) lub Ciemnosc (DARKNESS), zawsze odpowiadamy 'false'
+                  if (effect.equals(StatusEffects.BLINDNESS) || effect.equals(StatusEffects.DARKNESS)) {
+                      cir.setReturnValue(false);
+                  }
+              }
+          }
+          EOF
+
       - name: Inicjalizacja Gradle i kompilacja JAR
         run: |
           gradle wrapper --gradle-version 8.11.1
@@ -105,5 +131,5 @@ jobs:
       - name: Przesylanie gotowego pliku bota
         uses: actions/upload-artifact@v4
         with:
-          name: NoPush-Doomsday-JAR
+          name: NoPush-AntiBadEffect-JAR
           path: build/libs/*

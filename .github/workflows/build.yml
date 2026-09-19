@@ -1,0 +1,63 @@
+name: Kompilator NoPush Fabric 1.21.4
+on: [workflow_dispatch, push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pobieranie projektu
+        uses: actions/checkout@v4
+
+      - name: Konfiguracja Javy 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Pobieranie oficjalnego szablonu Fabric
+        run: |
+          git clone --depth=1 https://github.com template
+          mv template/gradle template/gradlew template/gradle.properties template/settings.gradle .
+          rm -rf template
+
+      - name: Konfiguracja wersji 1.21.4 i Mojang Mappings
+        run: |
+          echo "plugins { id 'fabric-loom' version '1.9-SNAPSHOT' }" > build.gradle
+          echo "version = '1.0.0'" >> build.gradle
+          echo "group = 'pl.serwer.nopush'" >> build.gradle
+          echo "dependencies { minecraft 'com.mojang:minecraft:1.21.4'; mappings loom.officialMojangMappings(); modImplementation 'net.fabricmc:fabric-loader:0.16.9' }" >> build.gradle
+          echo "tasks.withType(JavaCompile).configureEach { it.options.release = 21 }" >> build.gradle
+          echo "java { sourceCompatibility = JavaVersion.VERSION_21; targetCompatibility = JavaVersion.VERSION_21 }" >> build.gradle
+
+      - name: Nadpisywanie kodu z Doomsdaya
+        run: |
+          mkdir -p src/main/java/pl/serwer/nopush/mixin
+          mkdir -p src/main/resources
+          
+          echo '{"schemaVersion":1,"id":"nopush-doomsday","version":"1.0.0","name":"No Push Doomsday","description":"NoPush z Doomsday.","authors":["Serwer"],"license":"MIT","environment":"client","mixins":["nopush.mixins.json"],"depends":{"fabricloader":">=0.16.9","minecraft":"~1.21.4"}}' > src/main/resources/fabric.mod.json
+          echo '{"required":true,"package":"pl.serwer.nopush.mixin","compatibilityLevel":"JAVA_21","client":["LocalPlayerMixin"]}' > src/main/resources/nopush.mixins.json
+          
+          echo "package pl.serwer.nopush.mixin;" > src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
+          echo "import net.minecraft.client.player.LocalPlayer;" >> src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
+          echo "import org.spongepowered.asm.mixin.Mixin;" >> src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
+          echo "import org.spongepowered.asm.mixin.injection.At;" >> src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
+          echo "import org.spongepowered.asm.mixin.injection.Inject;" >> src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
+          echo "import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;" >> src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
+          echo "@Mixin(LocalPlayer.class)" >> src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
+          echo "public class LocalPlayerMixin {" >> src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
+          echo "    @Inject(method = \"pushOutOfBlocks\", at = @At(\"HEAD\"), cancellable = true)" >> src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
+          echo "    private void onPushOutOfBlocks(double x, double z, CallbackInfoReturnable<Boolean> cir) {" >> src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
+          echo "        cir.setReturnValue(false);" >> src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
+          echo "    }" >> src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
+          echo "}" >> src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
+
+      - name: Nadanie uprawnien i kompilacja JAR
+        run: |
+          chmod +x gradlew
+          ./gradlew build
+
+      - name: Przesylanie gotowego pliku bota
+        uses: actions/upload-artifact@v4
+        with:
+          name: NoPush-Doomsday-JAR
+          path: build/libs/*

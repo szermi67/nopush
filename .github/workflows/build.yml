@@ -14,57 +14,25 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      - name: Generowanie struktury projektu Fabric
+      - name: Pobieranie oficjalnego szablonu Fabric z GitHub
         run: |
+          # Pobieramy oficjalne srodowisko Fabric, ktore ma wbudowane wszystkie poprawne biblioteki
+          git clone --depth=1 -b 1.21.4 https://github.com project
+          cd project
+          
+          # Usuwamy domyslny kod z szablonu, aby zrobic miejsce na nasz mini-client
+          rm -rf src/main/java/net/fabricmc/example/*
+          rm -rf src/main/resources/assets
+          
+          # Konfigurujemy unikalna nazwe i ID naszego moda
+          sed -i 's/"modid"/"nopush-doomsday"/g' src/main/resources/fabric.mod.json
+          sed -i 's/"Example Mod"/"Mini Doomsday Client"/g' src/main/resources/fabric.mod.json
+          
+          # Tworzymy foldery pod nasze Mixiny i pliki GUI
           mkdir -p src/main/java/pl/serwer/nopush/mixin
           mkdir -p src/main/java/pl/serwer/nopush/gui
-          mkdir -p src/main/resources
 
-          cat << 'EOF' > settings.gradle
-          pluginManagement {
-              repositories {
-                  maven { url = 'https://maven.fabricmc.net/' }
-                  mavenCentral()
-              }
-          }
-          EOF
-
-          cat << 'EOF' > gradle.properties
-          org.gradle.jvmargs=-Xmx2G
-          EOF
-
-          cat << 'EOF' > build.gradle
-          plugins {
-              id 'fabric-loom' version '1.9-SNAPSHOT'
-          }
-          version = '1.0.0'
-          group = 'pl.serwer.nopush'
-          dependencies {
-              minecraft 'com.mojang:minecraft:1.21.4'
-              mappings 'net.fabricmc:yarn:1.21.4+build.1:v2'
-              modImplementation 'net.fabricmc:fabric-loader:0.16.9'
-          }
-          tasks.withType(JavaCompile).configureEach { it.options.release = 21 }
-          java { sourceCompatibility = JavaVersion.VERSION_21; targetCompatibility = JavaVersion.VERSION_21 }
-          EOF
-
-      - name: Generowanie plikow konfiguracyjnych moda
-        run: |
-          cat << 'EOF' > src/main/resources/fabric.mod.json
-          {
-            "schemaVersion": 1,
-            "id": "nopush-doomsday",
-            "version": "1.0.0",
-            "name": "Mini Doomsday Client",
-            "description": "Twoj wlasny mini-cheat z NoPush i AntiBadEffect.",
-            "authors": ["Serwer"],
-            "license": "MIT",
-            "environment": "client",
-            "mixins": ["nopush.mixins.json"],
-            "depends": { "fabricloader": ">=0.16.9", "minecraft": "~1.21.4" }
-          }
-          EOF
-
+          # Tworzymy plik konfiguracyjny mixinow
           cat << 'EOF' > src/main/resources/nopush.mixins.json
           {
             "required": true,
@@ -78,20 +46,19 @@ jobs:
           }
           EOF
 
-      - name: Generowanie kodu ustawien moda (Przelaczniki)
-        run: |
+          # Rejestrujemy plik mixinow w glownym configu Fabric
+          sed -i 's/"modid.mixins.json"/"nopush.mixins.json"/g' src/main/resources/fabric.mod.json
+
+          # Tworzymy klase z przelacznikami funkcji (ModSettings)
           cat << 'EOF' > src/main/java/pl/serwer/nopush/gui/ModSettings.java
           package pl.serwer.nopush.gui;
-          
           public class ModSettings {
-              // Te zmienne beda kontrolowane przez Twoje przyszle przyciski w menu!
               public static boolean noPushActive = true;
               public static boolean antiBlindActive = true;
           }
           EOF
 
-      - name: Generowanie kodu NoPush (Zintegrowany z wyłącznikiem)
-        run: |
+          # Tworzymy Mixin odpowiadajacy za NoPush
           cat << 'EOF' > src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
           package pl.serwer.nopush.mixin;
           import net.minecraft.client.player.LocalPlayer;
@@ -105,7 +72,6 @@ jobs:
           public class LocalPlayerMixin {
               @Inject(method = "pushOutOfBlocks", at = @At("HEAD"), cancellable = true)
               private void onPushOutOfBlocks(double x, double z, CallbackInfoReturnable<Boolean> cir) {
-                  // Jesli NoPush jest wlaczone w menu - blokuj wypychanie
                   if (ModSettings.noPushActive) {
                       cir.setReturnValue(false);
                   }
@@ -113,8 +79,7 @@ jobs:
           }
           EOF
 
-      - name: Generowanie kodu AntiBadEffect (Zintegrowany z wyłącznikiem)
-        run: |
+          # Tworzymy Mixin odpowiadajacy za AntiBadEffect
           cat << 'EOF' > src/main/java/pl/serwer/nopush/mixin/AntiBlindnessMixin.java
           package pl.serwer.nopush.mixin;
           import net.minecraft.client.player.LocalPlayer;
@@ -131,7 +96,6 @@ jobs:
           public class AntiBlindnessMixin {
               @Inject(method = "hasStatusEffect", at = @At("HEAD"), cancellable = true)
               private void onHasStatusEffect(RegistryEntry<StatusEffect> effect, CallbackInfoReturnable<Boolean> cir) {
-                  // Jesli AntiBadEffect jest wlaczony w menu - ukrywaj efekty
                   if (ModSettings.antiBlindActive) {
                       if (effect.value() == StatusEffects.BLINDNESS || effect.value() == StatusEffects.DARKNESS) {
                           cir.setReturnValue(false);
@@ -141,12 +105,10 @@ jobs:
           }
           EOF
 
-      - name: Rejestrowanie Prawego Shifta (Nasluchiwanie klawiatury)
-        run: |
+          # Tworzymy Mixin do nasluchiwania Prawego Shifta (Klawiatura)
           cat << 'EOF' > src/main/java/pl/serwer/nopush/mixin/KeyboardMixin.java
           package pl.serwer.nopush.mixin;
           import net.minecraft.client.Keyboard;
-          import net.minecraft.client.MinecraftClient;
           import org.spongepowered.asm.mixin.Mixin;
           import org.spongepowered.asm.mixin.injection.At;
           import org.spongepowered.asm.mixin.injection.Inject;
@@ -156,20 +118,24 @@ jobs:
           public class KeyboardMixin {
               @Inject(method = "onKey", at = @At("HEAD"))
               private void onKeyInput(long window, int key, int scancode, int action, int modifiers, CallbackInfo ci) {
-                  // 344 to kod Prawego Shifta w Minecraft. Gdy go klikniesz (action == 1), odpali sie log w konsoli
+                  // Wykrywanie klikniecia klawisza Prawy Shift (kod 344)
                   if (key == 344 && action == 1) {
-                      System.out.println("Kliknieto Prawy Shift - Gotowosc do otwarcia GUI Mini Doomsday!");
+                      System.out.println("[Mini Doomsday] Wykryto Prawy Shift!");
                   }
               }
           }
           EOF
 
-      - name: Kompilacja za pomoca globalnego narzedzia Gradle
-        run: |
-          gradle build --no-daemon
+          # Nadajemy uprawnienia i kompilujemy plik .jar oficjalnym skryptem gradlew
+          chmod +x gradlew
+          ./gradlew build
+          
+          # Przenosimy gotowy plik do glownego katalogu projektu, aby akcja mogla go wyslac
+          mkdir -p ../build/libs
+          cp build/libs/*-project.jar ../build/libs/mini-doomsday-1.0.0.jar 2>/dev/null || cp build/libs/*.jar ../build/libs/mini-doomsday-1.0.0.jar
 
       - name: Przesylanie gotowego pliku bota
         uses: actions/upload-artifact@v4
         with:
           name: Mini-Doomsday-JAR
-          path: build/libs/*
+          path: build/libs/mini-doomsday-1.0.0.jar

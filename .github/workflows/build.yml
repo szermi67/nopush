@@ -14,45 +14,55 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      - name: Pobieranie oficjalnego szablonu Fabric
-        run: |
-          git clone --depth=1 https://github.com template
-          mv template/gradle template/gradlew template/gradle.properties template/settings.gradle .
-          rm -rf template
-
-      - name: Konfiguracja wersji 1.21.4 i Mojang Mappings
-        run: |
-          echo "plugins { id 'fabric-loom' version '1.9-SNAPSHOT' }" > build.gradle
-          echo "version = '1.0.0'" >> build.gradle
-          echo "group = 'pl.serwer.nopush'" >> build.gradle
-          echo "dependencies { minecraft 'com.mojang:minecraft:1.21.4'; mappings loom.officialMojangMappings(); modImplementation 'net.fabricmc:fabric-loader:0.16.9' }" >> build.gradle
-          echo "tasks.withType(JavaCompile).configureEach { it.options.release = 21 }" >> build.gradle
-          echo "java { sourceCompatibility = JavaVersion.VERSION_21; targetCompatibility = JavaVersion.VERSION_21 }" >> build.gradle
-
-      - name: Nadpisywanie kodu z Doomsdaya
+      - name: Generowanie struktury projektu Fabric
         run: |
           mkdir -p src/main/java/pl/serwer/nopush/mixin
           mkdir -p src/main/resources
-          
+          mkdir -p gradle/wrapper
+
+          # Generowanie podstawowych ustawien budowania Gradle
+          echo "pluginManagement { repositories { maven { url = 'https://fabricmc.net' }; mavenCentral() } }" > settings.gradle
+          echo "org.gradle.jvmargs=-Xmx2G" > gradle.properties
+
+          # Budowanie pliku build.gradle z oficjalnymi mapowaniami Mojangu
+          (
+          echo "plugins { id 'fabric-loom' version '1.9-SNAPSHOT' }"
+          echo "version = '1.0.0'"
+          echo "group = 'pl.serwer.nopush'"
+          echo "dependencies { minecraft 'com.mojang:minecraft:1.21.4'; mappings loom.officialMojangMappings^(^); modImplementation 'net.fabricmc:fabric-loader:0.16.9' }"
+          echo "tasks.withType^(JavaCompile^).configureEach { it.options.release = 21 }"
+          echo "java { sourceCompatibility = JavaVersion.VERSION_21; targetCompatibility = JavaVersion.VERSION_21 }"
+          ) > build.gradle
+
+          # Tworzenie wrapperow koniecznych do kompilacji bez pobierania skryptow
+          echo 'wrapper { gradleVersion = "8.11.1" }' >> build.gradle
+
+      - name: Generowanie plików konfiguracyjnych moda
+        run: |
           echo '{"schemaVersion":1,"id":"nopush-doomsday","version":"1.0.0","name":"No Push Doomsday","description":"NoPush z Doomsday.","authors":["Serwer"],"license":"MIT","environment":"client","mixins":["nopush.mixins.json"],"depends":{"fabricloader":">=0.16.9","minecraft":"~1.21.4"}}' > src/main/resources/fabric.mod.json
           echo '{"required":true,"package":"pl.serwer.nopush.mixin","compatibilityLevel":"JAVA_21","client":["LocalPlayerMixin"]}' > src/main/resources/nopush.mixins.json
-          
-          echo "package pl.serwer.nopush.mixin;" > src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
-          echo "import net.minecraft.client.player.LocalPlayer;" >> src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
-          echo "import org.spongepowered.asm.mixin.Mixin;" >> src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
-          echo "import org.spongepowered.asm.mixin.injection.At;" >> src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
-          echo "import org.spongepowered.asm.mixin.injection.Inject;" >> src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
-          echo "import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;" >> src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
-          echo "@Mixin(LocalPlayer.class)" >> src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
-          echo "public class LocalPlayerMixin {" >> src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
-          echo "    @Inject(method = \"pushOutOfBlocks\", at = @At(\"HEAD\"), cancellable = true)" >> src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
-          echo "    private void onPushOutOfBlocks(double x, double z, CallbackInfoReturnable<Boolean> cir) {" >> src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
-          echo "        cir.setReturnValue(false);" >> src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
-          echo "    }" >> src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
-          echo "}" >> src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
 
-      - name: Nadanie uprawnien i kompilacja JAR
+      - name: Generowanie kodu zrodlowego z Doomsdaya
         run: |
+          (
+          echo "package pl.serwer.nopush.mixin;"
+          echo "import net.minecraft.client.player.LocalPlayer;"
+          echo "import org.spongepowered.asm.mixin.Mixin;"
+          echo "import org.spongepowered.asm.mixin.injection.At;"
+          echo "import org.spongepowered.asm.mixin.injection.Inject;"
+          echo "import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;"
+          echo "@Mixin^(LocalPlayer.class^)"
+          echo "public class LocalPlayerMixin {"
+          echo "    @Inject^(method = \"pushOutOfBlocks\", at = @At^(\"HEAD\"^), cancellable = true^)"
+          echo "    private void onPushOutOfBlocks^(double x, double z, CallbackInfoReturnable<Boolean> cir^) {"
+          echo "        cir.setReturnValue^(false^);"
+          echo "    }"
+          echo "}"
+          ) > src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
+
+      - name: Inicjalizacja Gradle i kompilacja JAR
+        run: |
+          gradle wrapper --gradle-version 8.11.1
           chmod +x gradlew
           ./gradlew build
 

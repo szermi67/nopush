@@ -23,7 +23,7 @@ jobs:
           cat << 'EOF' > settings.gradle
           pluginManagement {
               repositories {
-                  maven { url = 'https://fabricmc.net' }
+                  maven { url = 'https://maven.fabricmc.net/' }
                   mavenCentral()
               }
           }
@@ -41,7 +41,7 @@ jobs:
           group = 'pl.serwer.nopush'
           dependencies {
               minecraft 'com.mojang:minecraft:1.21.4'
-              mappings loom.officialMojangMappings()
+              mappings 'net.fabricmc:yarn:1.21.4+build.1:v2'
               modImplementation 'net.fabricmc:fabric-loader:0.16.9'
           }
           tasks.withType(JavaCompile).configureEach { it.options.release = 21 }
@@ -56,7 +56,7 @@ jobs:
             "schemaVersion": 1,
             "id": "nopush-doomsday",
             "version": "1.0.0",
-            "name": "No Push + AntiBadEffect",
+            "name": "No Push Doomsday",
             "description": "Wyciete moduly NoPush oraz AntiBlindness z cheata Doomsday.",
             "authors": ["Serwer"],
             "license": "MIT",
@@ -101,7 +101,6 @@ jobs:
         run: |
           cat << 'EOF' > src/main/java/pl/serwer/nopush/mixin/AntiBlindnessMixin.java
           package pl.serwer.nopush.mixin;
-          
           import net.minecraft.client.player.LocalPlayer;
           import net.minecraft.entity.effect.StatusEffects;
           import org.spongepowered.asm.mixin.Mixin;
@@ -111,11 +110,9 @@ jobs:
           
           @Mixin(LocalPlayer.class)
           public class AntiBlindnessMixin {
-              // Wstrzykujemy kod w sprawdzenie, czy gracz posiada dany efekt statusu
               @Inject(method = "hasStatusEffect", at = @At("HEAD"), cancellable = true)
-              private void onHasStatusEffect(net.minecraft.registry.entry.RegistryEntry effect, CallbackInfoReturnable<Boolean> cir) {
-                  // Jesli gra pyta, czy masz Slepote (BLINDNESS) lub Ciemnosc (DARKNESS), zawsze odpowiadamy 'false'
-                  if (effect.equals(StatusEffects.BLINDNESS) || effect.equals(StatusEffects.DARKNESS)) {
+              private void onHasStatusEffect(net.minecraft.entity.effect.StatusEffect effect, CallbackInfoReturnable<Boolean> cir) {
+                  if (effect == StatusEffects.BLINDNESS || effect == StatusEffects.DARKNESS) {
                       cir.setReturnValue(false);
                   }
               }

@@ -17,8 +17,8 @@ jobs:
       - name: Generowanie struktury projektu Fabric
         run: |
           mkdir -p src/main/java/pl/serwer/nopush/mixin
+          mkdir -p src/main/java/pl/serwer/nopush/gui
           mkdir -p src/main/resources
-          mkdir -p gradle/wrapper
 
           cat << 'EOF' > settings.gradle
           pluginManagement {
@@ -46,7 +46,6 @@ jobs:
           }
           tasks.withType(JavaCompile).configureEach { it.options.release = 21 }
           java { sourceCompatibility = JavaVersion.VERSION_21; targetCompatibility = JavaVersion.VERSION_21 }
-          wrapper { gradleVersion = "8.11.1" }
           EOF
 
       - name: Generowanie plikow konfiguracyjnych moda
@@ -56,8 +55,8 @@ jobs:
             "schemaVersion": 1,
             "id": "nopush-doomsday",
             "version": "1.0.0",
-            "name": "No Push Doomsday",
-            "description": "Wyciete moduly NoPush oraz AntiBlindness z cheata Doomsday.",
+            "name": "Mini Doomsday Client",
+            "description": "Twoj wlasny mini-cheat z NoPush i AntiBadEffect.",
             "authors": ["Serwer"],
             "license": "MIT",
             "environment": "client",
@@ -73,12 +72,25 @@ jobs:
             "compatibilityLevel": "JAVA_21",
             "client": [
               "LocalPlayerMixin",
-              "AntiBlindnessMixin"
+              "AntiBlindnessMixin",
+              "KeyboardMixin"
             ]
           }
           EOF
 
-      - name: Generowanie kodu NoPush (LocalPlayer)
+      - name: Generowanie kodu ustawien moda (Przelaczniki)
+        run: |
+          cat << 'EOF' > src/main/java/pl/serwer/nopush/gui/ModSettings.java
+          package pl.serwer.nopush.gui;
+          
+          public class ModSettings {
+              // Te zmienne beda kontrolowane przez Twoje przyszle przyciski w menu!
+              public static boolean noPushActive = true;
+              public static boolean antiBlindActive = true;
+          }
+          EOF
+
+      - name: Generowanie kodu NoPush (Zintegrowany z wyłącznikiem)
         run: |
           cat << 'EOF' > src/main/java/pl/serwer/nopush/mixin/LocalPlayerMixin.java
           package pl.serwer.nopush.mixin;
@@ -87,46 +99,77 @@ jobs:
           import org.spongepowered.asm.mixin.injection.At;
           import org.spongepowered.asm.mixin.injection.Inject;
           import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+          import pl.serwer.nopush.gui.ModSettings;
           
           @Mixin(LocalPlayer.class)
           public class LocalPlayerMixin {
               @Inject(method = "pushOutOfBlocks", at = @At("HEAD"), cancellable = true)
               private void onPushOutOfBlocks(double x, double z, CallbackInfoReturnable<Boolean> cir) {
-                  cir.setReturnValue(false);
-              }
-          }
-          EOF
-
-      - name: Generowanie kodu AntiBadEffect (Lightmap/Effects)
-        run: |
-          cat << 'EOF' > src/main/java/pl/serwer/nopush/mixin/AntiBlindnessMixin.java
-          package pl.serwer.nopush.mixin;
-          import net.minecraft.client.player.LocalPlayer;
-          import net.minecraft.entity.effect.StatusEffects;
-          import org.spongepowered.asm.mixin.Mixin;
-          import org.spongepowered.asm.mixin.injection.At;
-          import org.spongepowered.asm.mixin.injection.Inject;
-          import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
-          
-          @Mixin(LocalPlayer.class)
-          public class AntiBlindnessMixin {
-              @Inject(method = "hasStatusEffect", at = @At("HEAD"), cancellable = true)
-              private void onHasStatusEffect(net.minecraft.entity.effect.StatusEffect effect, CallbackInfoReturnable<Boolean> cir) {
-                  if (effect == StatusEffects.BLINDNESS || effect == StatusEffects.DARKNESS) {
+                  // Jesli NoPush jest wlaczone w menu - blokuj wypychanie
+                  if (ModSettings.noPushActive) {
                       cir.setReturnValue(false);
                   }
               }
           }
           EOF
 
-      - name: Inicjalizacja Gradle i kompilacja JAR
+      - name: Generowanie kodu AntiBadEffect (Zintegrowany z wyłącznikiem)
         run: |
-          gradle wrapper --gradle-version 8.11.1
-          chmod +x gradlew
-          ./gradlew build
+          cat << 'EOF' > src/main/java/pl/serwer/nopush/mixin/AntiBlindnessMixin.java
+          package pl.serwer.nopush.mixin;
+          import net.minecraft.client.player.LocalPlayer;
+          import net.minecraft.entity.effect.StatusEffect;
+          import net.minecraft.entity.effect.StatusEffects;
+          import org.spongepowered.asm.mixin.Mixin;
+          import org.spongepowered.asm.mixin.injection.At;
+          import org.spongepowered.asm.mixin.injection.Inject;
+          import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+          import net.minecraft.registry.entry.RegistryEntry;
+          import pl.serwer.nopush.gui.ModSettings;
+          
+          @Mixin(LocalPlayer.class)
+          public class AntiBlindnessMixin {
+              @Inject(method = "hasStatusEffect", at = @At("HEAD"), cancellable = true)
+              private void onHasStatusEffect(RegistryEntry<StatusEffect> effect, CallbackInfoReturnable<Boolean> cir) {
+                  // Jesli AntiBadEffect jest wlaczony w menu - ukrywaj efekty
+                  if (ModSettings.antiBlindActive) {
+                      if (effect.value() == StatusEffects.BLINDNESS || effect.value() == StatusEffects.DARKNESS) {
+                          cir.setReturnValue(false);
+                      }
+                  }
+              }
+          }
+          EOF
+
+      - name: Rejestrowanie Prawego Shifta (Nasluchiwanie klawiatury)
+        run: |
+          cat << 'EOF' > src/main/java/pl/serwer/nopush/mixin/KeyboardMixin.java
+          package pl.serwer.nopush.mixin;
+          import net.minecraft.client.Keyboard;
+          import net.minecraft.client.MinecraftClient;
+          import org.spongepowered.asm.mixin.Mixin;
+          import org.spongepowered.asm.mixin.injection.At;
+          import org.spongepowered.asm.mixin.injection.Inject;
+          import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+          
+          @Mixin(Keyboard.class)
+          public class KeyboardMixin {
+              @Inject(method = "onKey", at = @At("HEAD"))
+              private void onKeyInput(long window, int key, int scancode, int action, int modifiers, CallbackInfo ci) {
+                  // 344 to kod Prawego Shifta w Minecraft. Gdy go klikniesz (action == 1), odpali sie log w konsoli
+                  if (key == 344 && action == 1) {
+                      System.out.println("Kliknieto Prawy Shift - Gotowosc do otwarcia GUI Mini Doomsday!");
+                  }
+              }
+          }
+          EOF
+
+      - name: Kompilacja za pomoca globalnego narzedzia Gradle
+        run: |
+          gradle build --no-daemon
 
       - name: Przesylanie gotowego pliku bota
         uses: actions/upload-artifact@v4
         with:
-          name: NoPush-AntiBadEffect-JAR
+          name: Mini-Doomsday-JAR
           path: build/libs/*
